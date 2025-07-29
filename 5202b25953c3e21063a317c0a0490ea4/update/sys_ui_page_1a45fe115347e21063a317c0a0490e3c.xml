@@ -561,7 +561,7 @@
     
     <div class="container">
         <div class="header">
-            <h1>]]>🎙<![CDATA[️ ServiceNow Voice Assistant</h1>
+            <h1>ServiceNow Voice Assistant</h1>
             <p>Your intelligent AI-powered ServiceNow companion</p>
         </div>
 
@@ -616,7 +616,7 @@
         </div>
 
         <div class="transcript" id="transcript">
-            <strong>]]>🎵<![CDATA[ Voice Transcript</strong>
+            <strong>Voice Transcript</strong>
             <div id="transcriptText">Waiting for voice input...</div>
         </div>
     </div>
@@ -629,6 +629,7 @@
             this.isListening = false;
             this.conversationHistory = [];
             this.isDarkTheme = false;
+            this.conversationState = null; // Track conversation context
             
             // ServiceNow User Context
             this.currentUser = {
@@ -643,6 +644,12 @@
             this.initializeSpeechRecognition();
             this.initializeEventListeners();
             this.initializeServiceNowContext();
+            this.initializeVoices();
+            
+            // Add voice greeting on page load
+            setTimeout(() => {
+                this.speakWelcomeMessage();
+            }, 1500);
         }
 
         async initializeUser() {
@@ -684,7 +691,7 @@
                 try {
                     var testResponse = await this.makeServiceNowRequest('sys_user', 'sys_id!=null', 'sys_id,user_name,first_name,last_name,email', 'GET', null, 1);
                     if (testResponse.result) {
-                        if (testResponse.result.length > 0) {
+                        if (testResponse.result.length !== 0) {
                             var user = testResponse.result[0];
                             this.currentUser.sysId = user.sys_id;
                             this.currentUser.userName = user.user_name;
@@ -693,7 +700,7 @@
                             this.currentUser.email = user.email;
                             console.log('Using API fallback user:', this.currentUser.userName);
                             
-                            this.addInfoMessage(']]>🔧<![CDATA[ Note: Using API fallback for user context. Some features may be limited.');
+                            this.addInfoMessage('Note: Using API fallback for user context. Some features may be limited.');
                         }
                     }
                 } catch (error) {
@@ -702,10 +709,130 @@
             }
         }
 
+        // Helper function to avoid logical AND operator in XML
+        checkBoth(condition1, condition2) {
+            if (condition1) {
+                if (condition2) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Helper function to check if array exists and has length
+        hasResults(array) {
+            if (array) {
+                if (array.length !== 0) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        // Helper function to check minimum length without less-than operator
+        isTooShort(text, minLength) {
+            if (!text) return true;
+            
+            // Simple approach: check each character position up to minLength
+            for (var i = 0; i !== minLength; i++) {
+                if (i === text.length) {
+                    // We've reached the end of text before reaching minLength
+                    return true;
+                }
+            }
+            
+            // If we get here, text has at least minLength characters
+            return false;
+        }
+
+        // Helper function to strip HTML tags from text
+        stripHtmlTags(htmlText) {
+            if (!htmlText) return '';
+            
+            // Remove HTML tags using a simple approach
+            var tempDiv = document.createElement('div');
+            tempDiv.innerHTML = htmlText;
+            var cleanText = tempDiv.textContent || tempDiv.innerText || '';
+            
+            // Clean up extra whitespace
+            cleanText = cleanText.replace(/\s+/g, ' ').trim();
+            
+            return cleanText;
+        }
+
+        // Helper function to correct common speech recognition errors
+        correctSpeechErrors(command) {
+            if (!command) return command;
+            
+            // Common word corrections for ServiceNow terms
+            var corrections = {
+                'resident': 'incident',
+                'incidents': 'incidents',
+                'residents': 'incidents',
+                'in student': 'incident',
+                'insident': 'incident',
+                'president': 'incident',
+                'precedent': 'incident',
+                'accident': 'incident',
+                'ticket': 'ticket',
+                'tickets': 'tickets',
+                'take it': 'ticket',
+                'take its': 'tickets',
+                'tick it': 'ticket',
+                'ticketing': 'ticket',
+                'service': 'service',
+                'surface': 'service',
+                'cervix': 'service',
+                'services': 'services',
+                'catalog': 'catalog',
+                'catalogue': 'catalog',
+                'cattle log': 'catalog',
+                'knowledge': 'knowledge',
+                'no ledge': 'knowledge',
+                'college': 'knowledge',
+                'profile': 'profile',
+                'pro file': 'profile',
+                'profiling': 'profile',
+                'created': 'created',
+                'show me': 'show',
+                'show my': 'show',
+                'displayed': 'display',
+                'latest': 'latest',
+                'recent': 'recent'
+            };
+            
+            var correctedCommand = command.toLowerCase();
+            
+            // Apply corrections
+            for (var wrong in corrections) {
+                var correct = corrections[wrong];
+                // Use word boundaries to avoid partial matches
+                var regex = new RegExp('\\b' + wrong + '\\b', 'gi');
+                correctedCommand = correctedCommand.replace(regex, correct);
+            }
+            
+            return correctedCommand;
+        }
+
+        // Helper function to check if text contains ServiceNow keywords
+        hasServiceNowKeywords(text) {
+            if (!text) return false;
+            
+            var lowerText = text.toLowerCase();
+            var keywords = ['incident', 'ticket', 'service', 'catalog', 'knowledge', 'profile', 'create', 'status', 'help', 'user', 'report'];
+            
+            for (var i = 0; i !== keywords.length; i++) {
+                if (lowerText.indexOf(keywords[i]) !== -1) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
         async getUserFromAPI() {
             var response = await this.makeServiceNowRequest('sys_user', 'user_name=javascript:gs.getUserName()', 'sys_id,user_name,first_name,last_name,email');
             if (response.result) {
-                if (response.result.length > 0) {
+                if (response.result.length !== 0) {
                     var user = response.result[0];
                     this.currentUser.sysId = user.sys_id;
                     this.currentUser.userName = user.user_name;
@@ -714,6 +841,102 @@
                     this.currentUser.email = user.email;
                     console.log('User detected via API:', this.currentUser.userName);
                 }
+            }
+        }
+
+        initializeVoices() {
+            // Ensure voices are loaded for better speech synthesis
+            if ('speechSynthesis' in window) {
+                this.availableVoices = [];
+                
+                var loadVoices = () => {
+                    this.availableVoices = speechSynthesis.getVoices();
+                    if (this.availableVoices.length !== 0) {
+                        console.log('Loaded', this.availableVoices.length, 'voices');
+                        this.selectBestVoice();
+                    }
+                };
+                
+                // Load voices immediately if available
+                loadVoices();
+                
+                // Also load when voices change (some browsers load voices asynchronously)
+                if (speechSynthesis.onvoiceschanged !== undefined) {
+                    speechSynthesis.onvoiceschanged = loadVoices;
+                }
+            }
+        }
+
+        selectBestVoice() {
+            // Prefer female voices as they tend to sound more trustworthy and natural
+            var preferredVoices = [
+                'Microsoft Zira - English (United States)',
+                'Microsoft Eva - English (United States)', 
+                'Google US English Female',
+                'Microsoft Hazel - English (Great Britain)',
+                'Microsoft Susan - English (Great Britain)',
+                'Samantha',
+                'Alex',
+                'Victoria',
+                'Karen',
+                'Moira'
+            ];
+            
+            this.selectedVoice = null;
+            
+            // Try to find a preferred voice
+            for (var i = 0, iLen = preferredVoices.length; i !== iLen; i++) {
+                var preferredName = preferredVoices[i];
+                for (var j = 0, jLen = this.availableVoices.length; j !== jLen; j++) {
+                    if (this.availableVoices[j].name.indexOf(preferredName) !== -1 || 
+                        this.availableVoices[j].name === preferredName) {
+                        this.selectedVoice = this.availableVoices[j];
+                        break;
+                    }
+                }
+                if (this.selectedVoice) break;
+            }
+            
+            // Fallback: Select any female voice if preferred voices not found
+            if (!this.selectedVoice) {
+                for (var k = 0, kLen = this.availableVoices.length; k !== kLen; k++) {
+                    var voiceName = this.availableVoices[k].name.toLowerCase();
+                    if (voiceName.includes('female') || 
+                        voiceName.includes('woman') ||
+                        voiceName.includes('zira') ||
+                        voiceName.includes('eva') ||
+                        voiceName.includes('hazel') ||
+                        voiceName.includes('susan') ||
+                        voiceName.includes('samantha') ||
+                        voiceName.includes('karen') ||
+                        voiceName.includes('victoria')) {
+                        this.selectedVoice = this.availableVoices[k];
+                        break;
+                    }
+                }
+            }
+            
+            // Final fallback: Use first available voice if any
+            if (!this.selectedVoice) {
+                if (this.availableVoices.length !== 0) {
+                    this.selectedVoice = this.availableVoices[0];
+                }
+            }
+            
+            if (this.selectedVoice) {
+                console.log(']]>🎙<![CDATA[️ Selected voice:', this.selectedVoice.name, '- Language:', this.selectedVoice.lang);
+            } else {
+                console.log('⚠️ No suitable voice found, will use system default');
+            }
+        }
+
+        // Debug method to show all available voices
+        showAvailableVoices() {
+            console.log(']]>🎤<![CDATA[ Available voices on this system:');
+            for (var i = 0, iLen = this.availableVoices.length; i !== iLen; i++) {
+                var voice = this.availableVoices[i];
+                console.log((i + 1) + '. ' + voice.name + ' (' + voice.lang + ') - ' + 
+                           (voice.localService ? 'Local' : 'Remote'));
             }
         }
 
@@ -732,14 +955,18 @@
             
             if (speechRecognitionSupported) {
                 this.recognition = new SpeechRecognition();
-                this.recognition.continuous = true;
+                this.recognition.continuous = false;
                 this.recognition.interimResults = true;
                 this.recognition.lang = 'en-US';
+                this.recognition.maxAlternatives = 3;
+                
+                // Speech recognition optimization settings
+                this.recognition.serviceHints = ['incident', 'ticket', 'service', 'catalog', 'knowledge', 'profile', 'create', 'status', 'help'];
                 
                 var self = this;
                 
                 this.recognition.onstart = function() {
-                    self.updateStatus(']]>🎤<![CDATA[ Listening... Speak now!', 'listening');
+                    self.updateStatus('Listening... Speak now!', 'listening');
                     self.isListening = true;
                     self.toggleButtons();
                     self.showVoiceActivity(true);
@@ -749,21 +976,39 @@
                     var finalTranscript = '';
                     var interimTranscript = '';
                     
-                    var startIndex = event.resultIndex;
-                    var resultsLength = event.results.length;
-                    
-                    for (var i = startIndex; i !== resultsLength; i++) {
-                        if (i >= resultsLength) break;
+                    for (var i = event.resultIndex, iLen = event.results.length; i !== iLen; i++) {
+                        var result = event.results[i];
                         
-                        var transcript = event.results[i][0].transcript;
-                        if (event.results[i].isFinal) {
-                            finalTranscript += transcript;
-                        } else {
-                            interimTranscript += transcript;
+                        // Choose the best alternative from multiple results
+                        var bestTranscript = result[0].transcript;
+                        var bestConfidence = result[0].confidence || 0;
+                        
+                        // Check other alternatives if available
+                        for (var j = 1; j !== result.length; j++) {
+                            if (result[j]) {
+                                var altTranscript = result[j].transcript;
+                                var altConfidence = result[j].confidence || 0;
+                                
+                                // Prefer alternatives with ServiceNow keywords even if confidence is lower
+                                var hasServiceNowKeywords = self.hasServiceNowKeywords(altTranscript);
+                                var bestHasKeywords = self.hasServiceNowKeywords(bestTranscript);
+                                
+                                if (hasServiceNowKeywords) {
+                                    if (!bestHasKeywords) {
+                                        // Alternative has keywords, current best doesn't - use alternative
+                                        bestTranscript = altTranscript;
+                                        bestConfidence = altConfidence;
+                                    }
+                                }
+                            }
+                            if (j >= result.length) break;
                         }
                         
-                        i++;
-                        if (i >= resultsLength) break;
+                        if (result.isFinal) {
+                            finalTranscript += bestTranscript;
+                        } else {
+                            interimTranscript += bestTranscript;
+                        }
                     }
                     
                     self.updateTranscript(finalTranscript + interimTranscript);
@@ -774,18 +1019,18 @@
                 };
                 
                 this.recognition.onerror = function(event) {
-                    self.handleError(']]>🚫<![CDATA[ Speech recognition error: ' + event.error);
+                    self.handleError('Speech recognition error: ' + event.error);
                     self.showVoiceActivity(false);
                 };
                 
                 this.recognition.onend = function() {
-                    self.updateStatus('✨ Voice recognition stopped.', 'idle');
+                    self.updateStatus('Voice recognition stopped.', 'idle');
                     self.isListening = false;
                     self.toggleButtons();
                     self.showVoiceActivity(false);
                 };
             } else {
-                this.handleError(']]>🚫<![CDATA[ Speech recognition not supported in this browser.');
+                this.handleError('Speech recognition not supported in this browser.');
             }
         }
 
@@ -804,17 +1049,18 @@
                 var welcomeElement = document.getElementById('welcomeMessage');
                 if (welcomeElement) {
                     welcomeElement.innerHTML = 
-                        ']]>👋<![CDATA[ Hello ' + this.currentUser.firstName + '! I\'m your ServiceNow Voice Assistant. I can help you with:' +
-                        '<br/>• ]]>🎫<![CDATA[ Checking your ticket status' +
-                        '<br/>• ]]>📚<![CDATA[ Viewing knowledge base articles' +
-                        '<br/>• ]]>📋<![CDATA[ Browsing the service catalog' +
-                        '<br/>• ]]>👤<![CDATA[ Managing your profile' +
-                        '<br/>• ]]>🚨<![CDATA[ Creating new incidents' +
-                        '<br/><br/>✨ Just speak your request or click one of the action cards below!';
+                        'Hello ' + this.currentUser.firstName + '! I\'m your ServiceNow Voice Assistant. I can help you with:' +
+                        '<br/>• Checking your ticket status' +
+                        '<br/>• Viewing knowledge base articles' +
+                        '<br/>• Browsing the service catalog' +
+                        '<br/>• Managing your profile' +
+                        '<br/>• Creating new incidents' +
+                        '<br/><br/>Just speak your request or click one of the action cards below!';
                 }
             }
             
             console.log(']]>🎙<![CDATA[️ ServiceNow Voice Assistant initialized for user:', this.currentUser.userName);
+            console.log(']]>💡<![CDATA[ Tip: Type "voiceAssistant.showAvailableVoices()" in console to see all available voices');
         }
 
         showVoiceActivity(show) {
@@ -840,7 +1086,7 @@
             var typingDiv = document.createElement('div');
             typingDiv.className = 'typing-indicator';
             typingDiv.id = 'typingIndicator';
-            typingDiv.innerHTML = ']]>🤖<![CDATA[ Assistant is typing<div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
+            typingDiv.innerHTML = 'Assistant is typing<div class="typing-dots"><div class="typing-dot"></div><div class="typing-dot"></div><div class="typing-dot"></div></div>';
             chatContainer.appendChild(typingDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
         }
@@ -917,6 +1163,10 @@
                     this.recognition.stop();
                 }
             }
+            // Stop any ongoing speech synthesis
+            if ('speechSynthesis' in window) {
+                speechSynthesis.cancel();
+            }
         }
 
         toggleButtons() {
@@ -973,8 +1223,15 @@
         }
 
         async processVoiceCommand(command) {
-            this.addMessage(command, true);
-            this.updateStatus(']]>🤖<![CDATA[ Processing your request...', 'processing');
+            // Check if command was corrected
+            var correctedCommand = this.correctSpeechErrors(command);
+            var wasCorrected = (correctedCommand.toLowerCase() !== command.toLowerCase());
+            
+            // Show the original or corrected command to user
+            var displayCommand = wasCorrected ? correctedCommand + ' (corrected from: ' + command + ')' : command;
+            this.addMessage(wasCorrected ? correctedCommand : command, true);
+            
+            this.updateStatus('Processing your request...', 'processing');
             this.showTypingIndicator();
             
             this.storeConversation(command, 'user');
@@ -989,23 +1246,83 @@
             
             this.speakResponse(response);
             
-            this.updateStatus('✨ Ready to listen. Click the microphone to start.', 'idle');
+            this.updateStatus('Ready to listen. Click the microphone to start.', 'idle');
         }
 
         async generateResponse(command) {
-            var lowerCommand = command.toLowerCase();
+            // Apply speech recognition error corrections first
+            var correctedCommand = this.correctSpeechErrors(command);
+            var lowerCommand = correctedCommand.toLowerCase();
             
-            var isTicketQuery = (lowerCommand.indexOf('ticket') !== -1);
-            var isStatusQuery = (lowerCommand.indexOf('status') !== -1);
-            var isKnowledgeQuery = (lowerCommand.indexOf('knowledge') !== -1);
-            var isArticleQuery = (lowerCommand.indexOf('article') !== -1);
-            var isCatalogQuery = (lowerCommand.indexOf('catalog') !== -1);
-            var isServiceQuery = (lowerCommand.indexOf('service') !== -1);
-            var isIncidentQuery = (lowerCommand.indexOf('incident') !== -1);
-            var isCreateQuery = (lowerCommand.indexOf('create') !== -1);
-            var isReportQuery = (lowerCommand.indexOf('report') !== -1);
-            var isProfileQuery = (lowerCommand.indexOf('profile') !== -1);
-            var isUserQuery = (lowerCommand.indexOf('user') !== -1);
+            // Check if we're waiting for incident description
+            if (this.conversationState === 'waiting_for_incident_description') {
+                // Check if user is asking for something else (wants to cancel incident creation)
+                var isOtherQuery = (lowerCommand.indexOf('ticket') !== -1) || 
+                                  (lowerCommand.indexOf('tickets') !== -1) ||
+                                  (lowerCommand.indexOf('status') !== -1) ||
+                                  (lowerCommand.indexOf('check') !== -1) ||
+                                  (lowerCommand.indexOf('show') !== -1) ||
+                                  (lowerCommand.indexOf('display') !== -1) ||
+                                  (lowerCommand.indexOf('list') !== -1) ||
+                                  (lowerCommand.indexOf('get') !== -1) ||
+                                  (lowerCommand.indexOf('find') !== -1) ||
+                                  (lowerCommand.indexOf('latest') !== -1) ||
+                                  (lowerCommand.indexOf('recent') !== -1) ||
+                                  (lowerCommand.indexOf('view') !== -1) ||
+                                  (lowerCommand.indexOf('knowledge') !== -1) ||
+                                  (lowerCommand.indexOf('kb') !== -1) ||
+                                  (lowerCommand.indexOf('help') !== -1) ||
+                                  (lowerCommand.indexOf('article') !== -1) ||
+                                  (lowerCommand.indexOf('articles') !== -1) ||
+                                  (lowerCommand.indexOf('catalog') !== -1) ||
+                                  (lowerCommand.indexOf('catalogue') !== -1) ||
+                                  (lowerCommand.indexOf('service') !== -1) ||
+                                  (lowerCommand.indexOf('services') !== -1) ||
+                                  (lowerCommand.indexOf('profile') !== -1) ||
+                                  (lowerCommand.indexOf('account') !== -1) ||
+                                  (lowerCommand.indexOf('user') !== -1) ||
+                                  (lowerCommand.indexOf('my') !== -1);
+                
+                if (isOtherQuery) {
+                    // User is asking for something else, cancel incident creation and process normally
+                    this.conversationState = null;
+                    // Continue with normal processing below
+                } else {
+                    // User is providing incident description, create incident
+                    this.conversationState = null;
+                    return await this.handleIncidentCreation('create incident ' + command);
+                }
+            }
+            
+            // Check for viewing/querying keywords first
+            var isViewingQuery = (lowerCommand.indexOf('show') !== -1) || 
+                                (lowerCommand.indexOf('display') !== -1) ||
+                                (lowerCommand.indexOf('list') !== -1) ||
+                                (lowerCommand.indexOf('get') !== -1) ||
+                                (lowerCommand.indexOf('find') !== -1) ||
+                                (lowerCommand.indexOf('latest') !== -1) ||
+                                (lowerCommand.indexOf('recent') !== -1) ||
+                                (lowerCommand.indexOf('view') !== -1);
+            
+            var isTicketQuery = (lowerCommand.indexOf('ticket') !== -1) || (lowerCommand.indexOf('tickets') !== -1);
+            var isStatusQuery = (lowerCommand.indexOf('status') !== -1) || (lowerCommand.indexOf('check') !== -1);
+            var isKnowledgeQuery = (lowerCommand.indexOf('knowledge') !== -1) || (lowerCommand.indexOf('kb') !== -1) || (lowerCommand.indexOf('help') !== -1);
+            var isArticleQuery = (lowerCommand.indexOf('article') !== -1) || (lowerCommand.indexOf('articles') !== -1);
+            var isCatalogQuery = (lowerCommand.indexOf('catalog') !== -1) || (lowerCommand.indexOf('catalogue') !== -1);
+            var isServiceQuery = (lowerCommand.indexOf('service') !== -1) || (lowerCommand.indexOf('services') !== -1);
+            var isIncidentQuery = (lowerCommand.indexOf('incident') !== -1) || (lowerCommand.indexOf('incidents') !== -1);
+            var isCreateQuery = (lowerCommand.indexOf('create') !== -1) || (lowerCommand.indexOf('new') !== -1);
+            var isReportQuery = (lowerCommand.indexOf('report') !== -1) || (lowerCommand.indexOf('submit') !== -1);
+            var isProfileQuery = (lowerCommand.indexOf('profile') !== -1) || (lowerCommand.indexOf('account') !== -1);
+            var isUserQuery = (lowerCommand.indexOf('user') !== -1) || (lowerCommand.indexOf('my') !== -1);
+            
+            // Prioritize viewing incidents over creating incidents
+            if (isIncidentQuery) {
+                if (isViewingQuery) {
+                    // "Show me incidents", "Latest incident", etc. - treat as ticket query
+                    return await this.handleTicketQuery(command);
+                }
+            }
             
             if (isTicketQuery || isStatusQuery) {
                 return await this.handleTicketQuery(command);
@@ -1023,90 +1340,114 @@
                 return await this.handleUserProfile(command);
             }
             
-            return "✨ I can help you with ticket status, knowledge articles, service catalog, incident creation, and user profiles. What would you like me to assist you with?";
+            return "I can help you with ticket status, knowledge articles, service catalog, incident creation, and user profiles. What would you like me to assist you with?";
         }
 
         async handleTicketQuery(command) {
             try {
                 if (!this.currentUser.sysId) {
-                    return "]]>📋<![CDATA[ I can show you general ticket information. For personalized results, please ensure you're logged into ServiceNow properly.";
+                    return "I can show you general ticket information. For personalized results, please ensure you're logged into ServiceNow properly.";
                 }
 
                 var incidentQuery = 'assigned_to=' + this.currentUser.sysId + '^ORcaller_id=' + this.currentUser.sysId;
                 var requestQuery = 'requested_for=' + this.currentUser.sysId;
                 var changeQuery = 'requested_by=' + this.currentUser.sysId;
-                var fields = 'number,short_description,state,priority';
+                var fields = 'number,short_description,state,priority,sys_created_on';
+                
+                // Check if user wants latest/recent tickets
+                var lowerCommand = command.toLowerCase();
+                var wantsLatest = (lowerCommand.indexOf('latest') !== -1) || 
+                                 (lowerCommand.indexOf('recent') !== -1) ||
+                                 (lowerCommand.indexOf('last') !== -1);
+                
+                var orderBy = wantsLatest ? '^ORDERBYDESCsys_created_on' : '';
+                var limit = wantsLatest ? 3 : 10; // Show only 3 latest or 10 regular
 
-                var incidents = await this.makeServiceNowRequest('incident', incidentQuery, fields);
-                var requests = await this.makeServiceNowRequest('sc_request', requestQuery, fields);
-                var changes = await this.makeServiceNowRequest('change_request', changeQuery, fields);
+                var incidents = await this.makeServiceNowRequest('incident', incidentQuery + orderBy, fields, 'GET', null, limit);
+                var requests = await this.makeServiceNowRequest('sc_request', requestQuery + orderBy, fields, 'GET', null, limit);
+                var changes = await this.makeServiceNowRequest('change_request', changeQuery + orderBy, fields, 'GET', null, limit);
 
-                var responseText = ']]>🎫<![CDATA[ Here are your recent tickets';
+                var responseText = wantsLatest ? 'Here are your latest tickets' : 'Here are your recent tickets';
                 if (this.currentUser.firstName) {
                     responseText += ', ' + this.currentUser.firstName;
                 }
                 responseText += ':\n\n';
                 
-                if (incidents.result) {
-                    if (incidents.result.length > 0) {
-                        responseText += "]]>📋<![CDATA[ **Incidents:**\n";
-                        var incidentsList = incidents.result;
-                        for (var i in incidentsList) {
-                            var inc = incidentsList[i];
-                            responseText += '• ' + inc.number + ': ' + inc.short_description + ' (' + this.getStateText(inc.state) + ')\n';
+                if (this.hasResults(incidents.result)) {
+                    responseText += "Incidents:\n";
+                    for (var i = 0, iLen = incidents.result.length; i !== iLen; i++) {
+                        var inc = incidents.result[i];
+                        responseText += inc.number + ' - ' + inc.short_description;
+                        if (wantsLatest) {
+                            if (inc.sys_created_on) {
+                                var createdDate = new Date(inc.sys_created_on);
+                                var dateStr = createdDate.toLocaleDateString() + ' ' + createdDate.toLocaleTimeString();
+                                responseText += ' (Created: ' + dateStr + ')';
+                            }
                         }
-                        responseText += "\n";
+                        responseText += '\n';
+                    }
+                    responseText += "\n";
+                }
+                
+                if (this.hasResults(requests.result)) {
+                    responseText += "Service Requests:\n";
+                    for (var i = 0, iLen = requests.result.length; i !== iLen; i++) {
+                        var req = requests.result[i];
+                        responseText += req.number + ' - ' + req.short_description;
+                        if (wantsLatest) {
+                            if (req.sys_created_on) {
+                                var createdDate = new Date(req.sys_created_on);
+                                var dateStr = createdDate.toLocaleDateString() + ' ' + createdDate.toLocaleTimeString();
+                                responseText += ' (Created: ' + dateStr + ')';
+                            }
+                        }
+                        responseText += '\n';
+                    }
+                    responseText += "\n";
+                }
+                
+                if (this.hasResults(changes.result)) {
+                    responseText += "Change Requests:\n";
+                    for (var i = 0, iLen = changes.result.length; i !== iLen; i++) {
+                        var chg = changes.result[i];
+                        responseText += chg.number + ' - ' + chg.short_description;
+                        if (wantsLatest) {
+                            if (chg.sys_created_on) {
+                                var createdDate = new Date(chg.sys_created_on);
+                                var dateStr = createdDate.toLocaleDateString() + ' ' + createdDate.toLocaleTimeString();
+                                responseText += ' (Created: ' + dateStr + ')';
+                            }
+                        }
+                        responseText += '\n';
                     }
                 }
                 
-                if (requests.result) {
-                    if (requests.result.length > 0) {
-                        responseText += "]]>📝<![CDATA[ **Service Requests:**\n";
-                        var requestsList = requests.result;
-                        for (var i in requestsList) {
-                            var req = requestsList[i];
-                            responseText += '• ' + req.number + ': ' + req.short_description + ' (' + this.getStateText(req.state) + ')\n';
-                        }
-                        responseText += "\n";
-                    }
-                }
-                
-                if (changes.result) {
-                    if (changes.result.length > 0) {
-                        responseText += "]]>🔄<![CDATA[ **Change Requests:**\n";
-                        var changesList = changes.result;
-                        for (var i in changesList) {
-                            var chg = changesList[i];
-                            responseText += '• ' + chg.number + ': ' + chg.short_description + ' (' + this.getStateText(chg.state) + ')\n';
-                        }
-                    }
-                }
-                
-                var hasIncidents = incidents.result ? incidents.result.length > 0 : false;
-                var hasRequests = requests.result ? requests.result.length > 0 : false;
-                var hasChanges = changes.result ? changes.result.length > 0 : false;
+                var hasIncidents = this.hasResults(incidents.result);
+                var hasRequests = this.hasResults(requests.result);
+                var hasChanges = this.hasResults(changes.result);
                 
                 if (!hasIncidents) {
                     if (!hasRequests) {
                         if (!hasChanges) {
-                            responseText = "✅ No active tickets found for your account. Great job staying on top of things!";
+                            responseText = "No active tickets found for your account. Great job staying on top of things!";
                         }
                     }
                 }
                 
                 return responseText;
             } catch (error) {
-                return '❌ Sorry, I could not retrieve your ticket information. Error: ' + error.message;
+                return 'Sorry, I could not retrieve your ticket information. Error: ' + error.message;
             }
         }
 
         getStateText(stateValue) {
             var stateMap = {
-                '1': ']]>🆕<![CDATA[ New', '2': ']]>🔄<![CDATA[ In Progress', '3': '⏸️ On Hold', '6': '✅ Resolved', '7': ']]>🔒<![CDATA[ Closed',
-                '10': '❌ Canceled', '18': '⏳ Awaiting User Info', '19': ']]>📄<![CDATA[ Awaiting Evidence',
-                '20': ']]>🔍<![CDATA[ Awaiting Problem', '21': ']]>🏢<![CDATA[ Awaiting Vendor'
+                '1': 'New', '2': 'In Progress', '3': 'On Hold', '6': 'Resolved', '7': 'Closed',
+                '10': 'Canceled', '18': 'Awaiting User Info', '19': 'Awaiting Evidence',
+                '20': 'Awaiting Problem', '21': 'Awaiting Vendor'
             };
-            return stateMap[stateValue] || (']]>📊<![CDATA[ State ' + stateValue);
+            return stateMap[stateValue] || ('State ' + stateValue);
         }
 
         async handleKnowledgeQuery(command) {
@@ -1120,37 +1461,33 @@
                 
                 var response = await this.makeServiceNowRequest('kb_knowledge', query, 'number,short_description,text,kb_category.label');
                 
-                if (response.result) {
-                    if (response.result.length > 0) {
-                        var responseText = ']]>📚<![CDATA[ Here are relevant knowledge articles';
-                        if (this.currentUser.firstName) {
-                            responseText += ' for you, ' + this.currentUser.firstName;
-                        }
-                        responseText += ':\n\n';
-                        
-                        var articlesList = response.result;
-                        var articleIndex = 0;
-                        for (var i in articlesList) {
-                            var article = articlesList[i];
-                            articleIndex++;
-                            responseText += articleIndex + '. ]]>📖<![CDATA[ **' + article.short_description + '** (' + article.number + ')\n';
-                            if (article['kb_category.label']) {
-                                responseText += '   ]]>🏷<![CDATA[️ Category: ' + article['kb_category.label'] + '\n';
-                            }
-                            var preview = article.text ? article.text.substring(0, 100) + '...' : 'No preview available';
-                            responseText += '   ]]>💡<![CDATA[ ' + preview + '\n\n';
-                        }
-                        return responseText;
+                if (this.hasResults(response.result)) {
+                    var responseText = 'Here are relevant knowledge articles';
+                    if (this.currentUser.firstName) {
+                        responseText += ' for you, ' + this.currentUser.firstName;
                     }
+                    responseText += ':\n\n';
+                    
+                    for (var i = 0, iLen = response.result.length; i !== iLen; i++) {
+                        var article = response.result[i];
+                        responseText += (i + 1) + '. ' + article.short_description + ' (' + article.number + ')\n';
+                        if (article['kb_category.label']) {
+                            responseText += '   Category: ' + article['kb_category.label'] + '\n';
+                        }
+                        var cleanText = this.stripHtmlTags(article.text);
+                        var preview = cleanText ? cleanText.substring(0, 100) + '...' : 'No preview available';
+                        responseText += '   Preview: ' + preview + '\n\n';
+                    }
+                    return responseText;
                 }
                 
                 if (searchTerms) {
-                    return ']]>🔍<![CDATA[ No knowledge articles found matching "' + searchTerms + '". Try using different keywords.';
+                    return 'No knowledge articles found matching "' + searchTerms + '". Try using different keywords.';
                 } else {
-                    return "]]>📚<![CDATA[ No published knowledge articles found. Please contact your IT support team.";
+                    return "No published knowledge articles found. Please contact your IT support team.";
                 }
             } catch (error) {
-                return '❌ Sorry, I could not search the knowledge base. Error: ' + error.message;
+                return 'Sorry, I could not search the knowledge base. Error: ' + error.message;
             }
         }
 
@@ -1158,155 +1495,154 @@
             try {
                 var response = await this.makeServiceNowRequest('sc_cat_item', 'active=true^available_for=desktop', 'name,short_description,category.title,sys_id');
                 
-                if (response.result) {
-                    if (response.result.length > 0) {
-                        var responseText = ']]>📋<![CDATA[ Here are available service catalog items';
-                        if (this.currentUser.firstName) {
-                            responseText += ', ' + this.currentUser.firstName;
-                        }
-                        responseText += ':\n\n';
-                        
-                        var categorized = {};
-                        var catalogItems = response.result;
-                        for (var i in catalogItems) {
-                            var item = catalogItems[i];
-                            var category = item['category.title'] || 'General';
-                            if (!categorized[category]) {
-                                categorized[category] = [];
-                            }
-                            categorized[category].push(item);
-                        }
-                        
-                        for (var category in categorized) {
-                            responseText += ']]>📁<![CDATA[ **' + category + ':**\n';
-                            var items = categorized[category];
-                            for (var j in items) {
-                                var item = items[j];
-                                responseText += '• ⚡ ' + item.name + '\n';
-                                if (item.short_description) {
-                                    responseText += '  ]]>💬<![CDATA[ ' + item.short_description + '\n';
-                                }
-                            }
-                            responseText += "\n";
-                        }
-                        
-                        responseText += "✨ To request a service, please visit your ServiceNow portal or tell me which specific service you need.";
-                        return responseText;
+                if (this.hasResults(response.result)) {
+                    var responseText = 'Here are available service catalog items';
+                    if (this.currentUser.firstName) {
+                        responseText += ', ' + this.currentUser.firstName;
                     }
+                    responseText += ':\n\n';
+                    
+                    for (var i = 0, iLen = response.result.length; i !== iLen; i++) {
+                        var item = response.result[i];
+                        responseText += item.name + '\n';
+                    }
+                    
+                    responseText += "\nTo request a service, please visit your ServiceNow portal or tell me which specific service you need.";
+                    return responseText;
                 }
-                return "]]>📋<![CDATA[ No service catalog items are currently available. Please contact your IT support team.";
+                return "No service catalog items are currently available. Please contact your IT support team.";
             } catch (error) {
-                return '❌ Sorry, I could not retrieve the service catalog. Error: ' + error.message;
+                return 'Sorry, I could not retrieve the service catalog. Error: ' + error.message;
             }
         }
 
         async handleIncidentCreation(command) {
             try {
                 if (!this.currentUser.sysId) {
-                    return "]]>🚨<![CDATA[ I can help you create an incident, but I need proper user context. Please ensure you're logged into ServiceNow properly, or contact your system administrator.";
+                    return "I can help you create an incident, but I need proper user context. Please ensure you're logged into ServiceNow properly, or contact your system administrator.";
                 }
 
                 var description = command.replace(/create|incident|report|new|issue/gi, '').trim();
                 
-                var descriptionTooShort = true;
-                var minLength = 10;
-                if (description.length === minLength || description.length > minLength) {
-                    descriptionTooShort = false;
-                }
-                
-                if (!description || descriptionTooShort) {
+                if (this.isTooShort(description, 10)) {
                     var greeting = this.currentUser.firstName ? this.currentUser.firstName : 'there';
-                    return ']]>👋<![CDATA[ ' + greeting + ', I can help you create a new incident. Please provide more details about the issue you are experiencing, such as: "Create incident for laptop not connecting to WiFi" or "Report issue with email not working".';
+                    // Set conversation state to wait for incident description
+                    this.conversationState = 'waiting_for_incident_description';
+                    
+                    // Set timeout to reset conversation state after 2 minutes
+                    var self = this;
+                    setTimeout(function() {
+                        if (self.conversationState === 'waiting_for_incident_description') {
+                            self.conversationState = null;
+                        }
+                    }, 120000); // 2 minutes
+                    
+                    return 'Hi ' + greeting + ', I can help you create a new incident. Please provide more details about the issue you are experiencing, such as: "Create incident for laptop not connecting to WiFi" or "Report issue with email not working".';
                 }
                 
                 var shortDesc = description;
-                var descriptionTooLong = (description.length > 160);
-                if (descriptionTooLong) {
-                    shortDesc = description.substring(0, 160);
+                if (description.length !== 160) {
+                    var isLonger = false;
+                    for (var i = 160; i !== description.length; i++) {
+                        isLonger = true;
+                        break;
+                    }
+                    if (isLonger) {
+                        shortDesc = description.substring(0, 160);
+                    }
                 }
                 
                 var incidentData = {
                     short_description: shortDesc,
                     description: description,
                     caller_id: this.currentUser.sysId,
+                    contact_type: 'Ai',
                     category: 'inquiry',
-                    subcategory: 'other',
+                    subcategory: 'voice',
                     priority: '3',
                     impact: '3',
                     urgency: '3',
-                    state: '1'
+                    state: '1',
+                    cmdb_ci: 'ea2300215303261063a317c0a0490e79',
+                    assignment_group: 'bb14fea65377121063a317c0a0490ead'
                 };
                 
                 var response = await this.makeServiceNowRequest('incident', '', '', 'POST', incidentData);
                 
                 if (response.result) {
                     var greeting = this.currentUser.firstName ? this.currentUser.firstName : 'User';
-                    return '✅ Incident created successfully, ' + greeting + '!\n\n]]>🎫<![CDATA[ **Ticket Number:** ' + response.result.number + '\n]]>📝<![CDATA[ **Description:** ' + response.result.short_description + '\n]]>📊<![CDATA[ **Status:** New\n\n]]>🔔<![CDATA[ You will receive updates as we work on resolving this issue.';
+                    // Reset conversation state after successful incident creation
+                    this.conversationState = null;
+                    return 'Incident created successfully, ' + greeting + '!\n\nTicket Number: ' + response.result.number + '\nDescription: ' + response.result.short_description + '\nStatus: New\n\nYou will receive updates as we work on resolving this issue.';
                 } else {
-                    return "❌ There was an issue creating the incident. Please try again or contact IT support directly.";
+                    // Reset conversation state if incident creation failed
+                    this.conversationState = null;
+                    return "There was an issue creating the incident. Please try again or contact IT support directly.";
                 }
             } catch (error) {
-                return '❌ Sorry, I could not create the incident. Error: ' + error.message + '. Please contact your IT support team directly.';
+                // Reset conversation state on error
+                this.conversationState = null;
+                return 'Sorry, I could not create the incident. Error: ' + error.message + '. Please contact your IT support team directly.';
             }
         }
 
         async handleUserProfile(command) {
             try {
                 if (!this.currentUser.sysId) {
-                    return "]]>👤<![CDATA[ I need proper user context to show profile information. Please ensure you're logged into ServiceNow properly.";
+                    return "I need proper user context to show profile information. Please ensure you're logged into ServiceNow properly.";
                 }
 
                 var response = await this.makeServiceNowRequest('sys_user', 'sys_id=' + this.currentUser.sysId, 'name,email,department.name,title,last_login_time,active,phone,location.name');
                 
                 if (response.result) {
-                    if (response.result.length > 0) {
+                    if (response.result.length !== 0) {
                         var user = response.result[0];
                         var greeting = this.currentUser.firstName ? this.currentUser.firstName : 'User';
-                        var responseText = ']]>👤<![CDATA[ Here is your profile information, ' + greeting + ':\n\n';
-                        responseText += ']]>👨<![CDATA[‍]]>💼<![CDATA[ **Name:** ' + user.name + '\n';
-                        responseText += ']]>🔐<![CDATA[ **Username:** ' + this.currentUser.userName + '\n';
-                        responseText += ']]>📧<![CDATA[ **Email:** ' + user.email + '\n';
+                        var responseText = 'Here is your profile information, ' + greeting + ':\n\n';
+                        responseText += 'Name: ' + user.name + '\n';
+                        responseText += 'Username: ' + this.currentUser.userName + '\n';
+                        responseText += 'Email: ' + user.email + '\n';
                         if (user['department.name']) {
-                            responseText += ']]>🏢<![CDATA[ **Department:** ' + user['department.name'] + '\n';
+                            responseText += 'Department: ' + user['department.name'] + '\n';
                         }
                         if (user.title) {
-                            responseText += ']]>💼<![CDATA[ **Title:** ' + user.title + '\n';
+                            responseText += 'Title: ' + user.title + '\n';
                         }
                         if (user.phone) {
-                            responseText += ']]>📞<![CDATA[ **Phone:** ' + user.phone + '\n';
+                            responseText += 'Phone: ' + user.phone + '\n';
                         }
                         if (user['location.name']) {
-                            responseText += ']]>📍<![CDATA[ **Location:** ' + user['location.name'] + '\n';
+                            responseText += 'Location: ' + user['location.name'] + '\n';
                         }
                         if (user.last_login_time) {
                             var lastLogin = new Date(user.last_login_time).toLocaleString();
-                            responseText += ']]>🕐<![CDATA[ **Last Login:** ' + lastLogin + '\n';
+                            responseText += 'Last Login: ' + lastLogin + '\n';
                         }
-                        var isActive = (user.active === 'true') ? '✅ Active' : '❌ Inactive';
-                        responseText += ']]>📊<![CDATA[ **Account Status:** ' + isActive + '\n\n';
-                        responseText += "⚙️ To update your profile information, please contact your system administrator or visit the Employee Center in ServiceNow.";
+                        var isActive = (user.active === 'true') ? 'Active' : 'Inactive';
+                        responseText += 'Account Status: ' + isActive + '\n\n';
+                        responseText += "To update your profile information, please contact your system administrator or visit the Employee Center in ServiceNow.";
                         return responseText;
                     }
                 }
                 
                 var greeting = this.currentUser.firstName ? this.currentUser.firstName : 'User';
-                var responseText = ']]>👤<![CDATA[ Here is your basic profile information, ' + greeting + ':\n\n';
-                responseText += ']]>👨<![CDATA[‍]]>💼<![CDATA[ **Name:** ' + (this.currentUser.firstName || 'Unknown') + ' ' + (this.currentUser.lastName || '') + '\n';
-                responseText += ']]>🔐<![CDATA[ **Username:** ' + (this.currentUser.userName || 'Unknown') + '\n';
+                var responseText = 'Here is your basic profile information, ' + greeting + ':\n\n';
+                responseText += 'Name: ' + (this.currentUser.firstName || 'Unknown') + ' ' + (this.currentUser.lastName || '') + '\n';
+                responseText += 'Username: ' + (this.currentUser.userName || 'Unknown') + '\n';
                 if (this.currentUser.email) {
-                    responseText += ']]>📧<![CDATA[ **Email:** ' + this.currentUser.email + '\n';
+                    responseText += 'Email: ' + this.currentUser.email + '\n';
                 }
-                responseText += "\n]]>📋<![CDATA[ For complete profile details, please visit your Employee Center in ServiceNow.";
+                responseText += "\nFor complete profile details, please visit your Employee Center in ServiceNow.";
                 return responseText;
             } catch (error) {
                 var greeting = this.currentUser.firstName ? this.currentUser.firstName : 'User';
-                var responseText = ']]>👤<![CDATA[ Here is your basic profile information, ' + greeting + ':\n\n';
-                responseText += ']]>👨<![CDATA[‍]]>💼<![CDATA[ **Name:** ' + (this.currentUser.firstName || 'Unknown') + ' ' + (this.currentUser.lastName || '') + '\n';
-                responseText += ']]>🔐<![CDATA[ **Username:** ' + (this.currentUser.userName || 'Unknown') + '\n';
+                var responseText = 'Here is your basic profile information, ' + greeting + ':\n\n';
+                responseText += 'Name: ' + (this.currentUser.firstName || 'Unknown') + ' ' + (this.currentUser.lastName || '') + '\n';
+                responseText += 'Username: ' + (this.currentUser.userName || 'Unknown') + '\n';
                 if (this.currentUser.email) {
-                    responseText += ']]>📧<![CDATA[ **Email:** ' + this.currentUser.email + '\n';
+                    responseText += 'Email: ' + this.currentUser.email + '\n';
                 }
-                responseText += '\n❌ Error retrieving detailed profile: ' + error.message;
+                responseText += '\nError retrieving detailed profile: ' + error.message;
                 return responseText;
             }
         }
@@ -1314,11 +1650,30 @@
         speakResponse(text) {
             if ('speechSynthesis' in window) {
                 var utterance = new SpeechSynthesisUtterance(text);
-                utterance.rate = 0.9;
-                utterance.pitch = 1;
-                utterance.volume = 0.8;
+                
+                // Use the pre-selected human-like voice
+                if (this.selectedVoice) {
+                    utterance.voice = this.selectedVoice;
+                } else {
+                    // If no voice was selected, try to get one now
+                    this.selectBestVoice();
+                    if (this.selectedVoice) {
+                        utterance.voice = this.selectedVoice;
+                    }
+                }
+                
+                // Optimize settings for more natural, trustworthy speech
+                utterance.rate = 0.85;    // Slightly slower for better clarity and understanding
+                utterance.pitch = 1.1;    // Slightly higher pitch sounds friendlier and more trustworthy
+                utterance.volume = 0.9;   // Clear, confident volume
+                
                 speechSynthesis.speak(utterance);
             }
+        }
+
+        speakWelcomeMessage() {
+            const welcomeText = "Hey there! I'm your v Ai. Click the Mic to connect with me.";
+            this.speakResponse(welcomeText);
         }
 
         storeConversation(message, role) {
@@ -1379,7 +1734,7 @@
             chatContainer.appendChild(errorDiv);
             chatContainer.scrollTop = chatContainer.scrollHeight;
             
-            this.updateStatus('❌ Error occurred. Please try again.', 'error');
+            this.updateStatus('Error occurred. Please try again.', 'error');
         }
     }
 
@@ -1425,13 +1780,13 @@
         <sys_created_by>vasanth</sys_created_by>
         <sys_created_on>2025-07-29 10:35:51</sys_created_on>
         <sys_id>1a45fe115347e21063a317c0a0490e3c</sys_id>
-        <sys_mod_count>3</sys_mod_count>
+        <sys_mod_count>6</sys_mod_count>
         <sys_name>Voice Assistant</sys_name>
         <sys_package display_value="Voice assistant Conversation" source="x_941497_voice_ast">5202b25953c3e21063a317c0a0490ea4</sys_package>
         <sys_policy/>
         <sys_scope display_value="Voice assistant Conversation">5202b25953c3e21063a317c0a0490ea4</sys_scope>
         <sys_update_name>sys_ui_page_1a45fe115347e21063a317c0a0490e3c</sys_update_name>
         <sys_updated_by>vasanth</sys_updated_by>
-        <sys_updated_on>2025-07-29 11:18:12</sys_updated_on>
+        <sys_updated_on>2025-07-29 17:37:17</sys_updated_on>
     </sys_ui_page>
 </record_update>
