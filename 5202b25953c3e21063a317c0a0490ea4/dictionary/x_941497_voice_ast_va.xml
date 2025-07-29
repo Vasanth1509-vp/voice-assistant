@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?><database>
+    <element db_object_id="a6f276d95307e21063a317c0a0490e90" label="Va" max_length="40" name="x_941497_voice_ast_va" type="collection">
+        <element attributes="edge_encryption_enabled=true" label="Role" max_length="40" name="role" type="string"/>
+        <element attributes="edge_encryption_enabled=true" label="Message" max_length="4000" name="message" type="string"/>
+        <element attributes="edge_encryption_enabled=true" label="User Name" max_length="40" name="user_name" type="string"/>
+        <element attributes="edge_encryption_enabled=true" label="Time Stamp" max_length="40" name="time_stamp" type="glide_date_time"/>
+        <element attributes="edge_encryption_enabled=true" label="User Email" max_length="40" name="user_email" type="string"/>
+        <element attributes="encode_utf8=false" label="User Sys ID" max_length="32" name="user_sys_id" reference="sys_user" type="reference"/>
+        <element attributes="edge_encryption_enabled=true" label="Session ID" max_length="40" name="session_id" type="string"/>
+        <element attributes="edge_encryption_enabled=true" default="javascript:global.getNextObjNumberPadded();" label="Number" max_length="40" name="number" type="string"/>
+        <index name="index">
+            <element name="user_sys_id"/>
+        </index>
+    </element>
+</database>

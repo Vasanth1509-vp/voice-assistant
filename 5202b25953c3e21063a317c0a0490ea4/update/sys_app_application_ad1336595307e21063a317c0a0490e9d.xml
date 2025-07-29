@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><record_update sys_domain="global" table="sys_app_application">
+    <sys_app_application action="INSERT_OR_UPDATE">
+        <active>true</active>
+        <category display_value="">Custom Applications</category>
+        <description>This Application is being used to store the Voice Assistant Conversation Data</description>
+        <device_type>browser</device_type>
+        <hint>This Application is being used to store the Voice Assistant Conversation Data</hint>
+        <name/>
+        <order/>
+        <roles>admin,itil,snc_internal</roles>
+        <sys_class_name>sys_app_application</sys_class_name>
+        <sys_created_by>vasanth</sys_created_by>
+        <sys_created_on>2025-07-29 10:13:12</sys_created_on>
+        <sys_domain>global</sys_domain>
+        <sys_domain_path>/</sys_domain_path>
+        <sys_id>ad1336595307e21063a317c0a0490e9d</sys_id>
+        <sys_mod_count>0</sys_mod_count>
+        <sys_name>Voice assistant Conversation</sys_name>
+        <sys_overrides/>
+        <sys_package display_value="Voice assistant Conversation" source="x_941497_voice_ast">5202b25953c3e21063a317c0a0490ea4</sys_package>
+        <sys_policy/>
+        <sys_scope display_value="Voice assistant Conversation">5202b25953c3e21063a317c0a0490ea4</sys_scope>
+        <sys_update_name>sys_app_application_ad1336595307e21063a317c0a0490e9d</sys_update_name>
+        <sys_updated_by>vasanth</sys_updated_by>
+        <sys_updated_on>2025-07-29 10:13:12</sys_updated_on>
+        <title>Voice assistant Conversation</title>
+        <view_name/>
+    </sys_app_application>
+</record_update>
